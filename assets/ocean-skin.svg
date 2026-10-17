@@ -1,0 +1,27 @@
+<svg preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" fill="none">
+  <!-- 澄蓝水波：文字由宿主渲染；上层冰白高光、中层清蓝水面、底层深蓝波纹。 -->
+  <defs>
+    <linearGradient id="water" x1="600" y1="42" x2="600" y2="558" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#70c9ee"/><stop offset=".34" stop-color="#248bc7"/><stop offset=".57" stop-color="#1b6eb2"/><stop offset="1" stop-color="#125ca5"/>
+    </linearGradient>
+    <linearGradient id="ice" x1="600" y1="40" x2="600" y2="171" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f6fdff"/><stop offset=".54" stop-color="#d8f2fc"/><stop offset="1" stop-color="#b8e2f6" stop-opacity=".55"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="64" y1="58" x2="1136" y2="529" gradientUnits="userSpaceOnUse">
+      <stop stop-color="white" stop-opacity=".34"/><stop offset=".36" stop-color="white" stop-opacity="0"/><stop offset="1" stop-color="#76c9f3" stop-opacity=".18"/>
+    </linearGradient>
+    <clipPath id="panel"><rect x="36" y="36" width="1128" height="528" rx="80"/></clipPath>
+    <filter id="shadow" x="0" y="0" width="1200" height="600" filterUnits="userSpaceOnUse"><feDropShadow dy="9" stdDeviation="9" flood-color="#164680" flood-opacity=".24"/></filter>
+  </defs>
+  <rect x="36" y="36" width="1128" height="528" rx="80" fill="url(#water)" filter="url(#shadow)"/>
+  <g clip-path="url(#panel)">
+    <path d="M36 36H1164V140C1050 116 994 164 868 141C714 114 656 180 489 149C304 113 190 164 36 134Z" fill="url(#ice)"/>
+    <path d="M36 162C202 208 289 140 435 170C589 202 668 154 821 181C956 204 1063 144 1164 165V218C1014 198 909 248 756 218C590 187 492 233 318 213C207 201 112 218 36 197Z" fill="#67c2ed" fill-opacity=".65"/>
+    <path d="M36 258C179 228 244 274 363 257C520 236 606 268 757 251C937 230 1010 252 1164 232V272C1035 302 938 274 785 291C620 308 514 276 351 296C197 312 130 280 36 299Z" fill="#2687c5" fill-opacity=".7"/>
+    <path d="M36 391C185 367 256 421 415 392C561 365 690 404 830 379C1003 349 1083 384 1164 366V480C1009 459 899 502 744 470C602 440 482 478 333 457C183 438 106 466 36 441Z" fill="#409bd5" fill-opacity=".48"/>
+    <path d="M36 490C195 465 268 521 422 495C601 465 661 514 827 491C993 469 1057 506 1164 484V564H36Z" fill="#0d4e98" fill-opacity=".7"/>
+    <path d="M92 63H1094C1107 63 1123 69 1134 80" stroke="#f7fdff" stroke-width="8" stroke-opacity=".65" stroke-linecap="round"/>
+    <rect x="40" y="40" width="1120" height="520" rx="76" fill="url(#sheen)"/>
+    <rect x="40" y="40" width="1120" height="520" rx="76" stroke="#c7edff" stroke-opacity=".36" stroke-width="5"/>
+  </g>
+</svg>

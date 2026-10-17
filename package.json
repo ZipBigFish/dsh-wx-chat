@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-wx-chat",
-  "version": "2.5.0",
+  "version": "2.8.0",
   "private": true,
   "type": "module",
-  "description": "WeChat-style chat layout for the DeepSeek Harness conversation: user bubbles right with avatar, DeepSeek bubbles left. Adds per-turn tool/type avatars, a labeled roleplay-avatar entry with per-turn mode boundaries, tabbed settings, a size/appearance preview modal with restore, a standalone centered crop modal, click-to-preview, solid/transparent avatar backgrounds, GIF support, in-bubble scrolling for wide markdown tables with contrast-safe custom bubble colours, high-resolution crop export (up to 1024px) with a size budget, bubble-aware inline-code colours, per-turn avatar history (IndexedDB), subtle frosted-glass bubbles with a glass toggle and three bubble styles, and shareable per-session avatar schemes (create/copy/rename/delete/import/export, one scheme per session). Presentation-only UI layer.",
+  "description": "WeChat-style DSH chat with per-turn avatar history, preset schemes, crop UI, responsive vector bubble frames, fixed-proportion characters, blue ocean bubbles, day/night palettes, and optional whale-wave switches.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -17,7 +17,14 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "docs/**/*"
+    "docs/**/*",
+    "assets/README.md",
+    "assets/生成提示词.md",
+    "assets/cat-skin.webp",
+    "assets/cat-dark-skin.webp",
+    "assets/ocean-skin.svg",
+    "assets/ocean-dark-skin.svg",
+    "assets/vector/*"
   ],
   "icon": "./icon.svg",
   "dsh": {
