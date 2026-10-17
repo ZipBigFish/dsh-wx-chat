@@ -1,6 +1,6 @@
 /**
  * dsh-wx-chat —— DeepSeek Harness 微信风聊天气泡（Client half）。
- * @version 2.4.0
+ * @version 2.5.0
  *
  * 设计原则（presentation-only）：
  * - 不替换任何 `conversation.chat.node` 渲染器，Markdown/代码高亮/流式/
@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
     // ── WX-M02 常量与默认配置 ─────────────────────────────────────────────
     // 两个 localStorage 键：CONFIG_KEY 存整份配置，ROLE_MODE_KEY 存「每会话角色模式边界」。
     const PACKAGE_NAME = '@local/dsh-wx-chat';
-    const VERSION = '2.4.0';
+    const VERSION = '2.5.0';
     const CONFIG_KEY = 'dsh-wx-chat/config-v1';
     const ROLE_MODE_KEY = 'dsh-wx-chat/roleplay-v1';
 
@@ -142,8 +142,12 @@ window.__ModuleLoader__.load({
       toolRules: [],                        // [{ name, avatar }] 具体工具名规则，优先于类型
       roleAvatar: '',                       // 角色扮演头像
       roleMarkerEnabled: true,              // 解析助手正文里的角色扮演标记
+      bubbleGlass: true,                    // 轻微毛玻璃开关（false = 还原近不透明底色）
+      bubbleStyle: 'classic',               // classic | soft | outline
     };
 
+    const SCHEME_BUBBLE_STYLES = ['classic', 'soft', 'outline'];
+    const BUBBLE_STYLE_CHOICES = [['classic', '经典'], ['soft', '柔光'], ['outline', '描边']];
     const ROLE_MODES = ['auto', 'on', 'off'];
     const DEFAULT_ROLE_MODE = 'auto';
     const AVATAR_BG_DEFAULT = '#4d6bfe';
@@ -194,6 +198,8 @@ window.__ModuleLoader__.load({
       next.avatarSize = clampNumber(next.avatarSize, AVATAR_SIZE_MIN, AVATAR_SIZE_MAX, AVATAR_SIZE_DEFAULT);
       next.avatarRoundness = clampNumber(next.avatarRoundness, 0, 100, AVATAR_ROUNDNESS_DEFAULT);
       next.avatarBg = normalizeAvatarBg(next.avatarBg);
+      next.bubbleGlass = typeof next.bubbleGlass === 'boolean' ? next.bubbleGlass : DEFAULTS.bubbleGlass;
+      next.bubbleStyle = SCHEME_BUBBLE_STYLES.indexOf(next.bubbleStyle) >= 0 ? next.bubbleStyle : DEFAULTS.bubbleStyle;
       return next;
     }
     /** 头像背景只允许：空（默认蓝）/ 'transparent' / #rgb / #rrggbb。其它一律回落默认。 */
@@ -236,9 +242,38 @@ window.__ModuleLoader__.load({
      * 没自定义就返回 ''（调用方写 initial），让 CSS 回落到本主题的 --wx-*-text。
      * 只作用于本插件的气泡，不改用户保存的颜色，也不动宿主全局配色。
      */
-    function bubbleTextOn(color) {
+    /**
+     * 轻微玻璃（2.4.1）：把**自定义**气泡色派生成一块近乎不透明的玻璃底。
+     * - alpha 从 0.90 起步；在「黑 / 白」两个端点背景上分别合成后算最差文字对比，
+     *   不足 4.5 就按 0.02 步进提高 alpha，必要时直接不透明（可读性优先）；
+     * - 不动用户保存的颜色；解析不了的旧导入颜色返回 '' → 交给 CSS 原样回退。
+     */
+    function glassBaseOf(color) {
       const raw = String(color == null ? '' : color).trim();
       if (!raw || raw === 'transparent') return '';
+      const rgb = hexToRgb(raw.toLowerCase());
+      const text = hexToRgb(bubbleTextOn(raw) || '#172347');
+      if (!rgb || !text) return '';
+      const luminanceOf = (channels) => channels.map((value) => {
+        const srgb = value / 255;
+        return srgb <= 0.04045 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
+      }).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
+      const contrast = (a, b) => {
+        const la = luminanceOf(a); const lb = luminanceOf(b);
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+      };
+      // 两个端点都要安全：气泡底下可能是白的也可能是黑的（真实背景不可控）
+      const worst = (alpha) => Math.min(...[0, 255].map((end) => contrast(
+        text,
+        [0, 1, 2].map((i) => rgb[i] * alpha + end * (1 - alpha)),
+      )));
+      let alpha = 0.90;
+      while (alpha < 1 && worst(alpha) < 4.5) alpha = Math.min(1, Math.round((alpha + 0.02) * 100) / 100);
+      return 'rgba(' + rgb.join(', ') + ', ' + alpha.toFixed(2) + ')';
+    }
+
+    function bubbleTextOn(color) {
+      const raw = String(color == null ? '' : color).trim();
       const rgb = hexToRgb(raw.toLowerCase());
       if (!rgb) return '';
       // sRGB 先线性化，再计算相对亮度；直接对通道加权会误判中灰、红色等背景。
@@ -519,6 +554,7 @@ window.__ModuleLoader__.load({
         const limit = mode === 'read' ? SCHEME_MAX_STORE_CHARS : SCHEME_MAX_STRING_CHARS;
         if (value.length > limit) throw new Error('配置项「' + key + '」的内容过大（超过 ' + Math.round(limit / 1024 / 1024) + 'M 字符）');
         if (key === 'theme' && SCHEME_THEMES.indexOf(value) < 0) throw new Error('主题取值不合法');
+        if (key === 'bubbleStyle' && SCHEME_BUBBLE_STYLES.indexOf(value) < 0) throw new Error('气泡样式取值不合法');
       }
     }
     function validateCategoryAvatars(raw, mode) {
@@ -1168,9 +1204,13 @@ window.__ModuleLoader__.load({
       '--wx-avatar-round', '--wx-avatar-bg', '--wx-avatar-fg',
       '--wx-avatar-user-img', '--wx-avatar-user-text', '--wx-avatar-user-fallback',
       '--wx-avatar-ai-img', '--wx-avatar-ai-text', '--wx-avatar-role-img', '--wx-avatar-ring',
-      '--wx-bubble-user', '--wx-bubble-ai', '--wx-bubble-user-text', '--wx-bubble-ai-text', '--wx-radius', '--wx-max',
+      '--wx-bubble-user', '--wx-bubble-ai', '--wx-bubble-user-text', '--wx-bubble-ai-text',
+      '--wx-glass-user-bg', '--wx-glass-ai-bg', '--wx-radius', '--wx-max',
+      '--wx-surface-user-bg', '--wx-surface-ai-bg', '--wx-surface-filter',
+      '--wx-style-user-border', '--wx-style-ai-border', '--wx-style-user-shadow', '--wx-style-ai-shadow',
+      '--wx-surface-user-shadow', '--wx-surface-ai-shadow',
     ];
-    const ROOT_DATASETS = ['wxTheme', 'wxTimestamps', 'wxMergeAvatars', 'wxToolAvatars'];
+    const ROOT_DATASETS = ['wxTheme', 'wxTimestamps', 'wxMergeAvatars', 'wxToolAvatars', 'wxGlass', 'wxBubbleStyle'];
 
     function avatarSizeOf(cfg) {
       return clampNumber(cfg && cfg.avatarSize, AVATAR_SIZE_MIN, AVATAR_SIZE_MAX, AVATAR_SIZE_DEFAULT);
@@ -1212,6 +1252,32 @@ window.__ModuleLoader__.load({
       // 自定义气泡色 → 按亮度给文字挑对比色；没自定义 → initial（回落到本主题的 --wx-*-text）
       s.setProperty('--wx-bubble-user-text', bubbleTextOn(cfg.userBubble) || 'initial');
       s.setProperty('--wx-bubble-ai-text', bubbleTextOn(cfg.aiBubble) || 'initial');
+      // 轻微玻璃底（2.4.1）：自定义色派生出的近乎不透明玻璃底；没自定义写 initial →
+      // CSS 用该主题的默认玻璃底（@supports 里才启用 backdrop-filter，不支持就退回近不透明底色）。
+      s.setProperty('--wx-glass-user-bg', glassBaseOf(cfg.userBubble) || 'initial');
+      s.setProperty('--wx-glass-ai-bg', glassBaseOf(cfg.aiBubble) || 'initial');
+      // 每个作用域完整写入外观变量。气泡只读取最近的值，避免 html 的开关/样式
+      // 穿透会话或 portal 的相反选择；这些是派生值，不进入持久化与头像历史。
+      const glass = cfg.bubbleGlass !== false;
+      const style = SCHEME_BUBBLE_STYLES.indexOf(cfg.bubbleStyle) >= 0 ? cfg.bubbleStyle : 'classic';
+      s.setProperty('--wx-surface-filter', glass ? 'blur(10px) saturate(1.1)' : 'none');
+      for (const side of ['user', 'ai']) {
+        const color = side === 'user' ? cfg.userBubble : cfg.aiBubble;
+        const shadow = style === 'soft' ? '0 2px 10px rgba(19, 38, 87, 0.07)'
+          : style === 'outline' ? 'none' : 'var(--wx-' + side + '-shadow)';
+        const border = style === 'classic' ? 'var(--wx-' + side + '-border)'
+          : 'color-mix(in srgb, currentColor ' + (style === 'soft' ? '12' : '42') + '%, transparent)';
+        const highlight = 'inset 0 1px 0 rgba(255, 255, 255, ' + (style === 'soft' ? '0.14' : style === 'outline' ? '0.12' : '0.18') + ')';
+        s.setProperty('--wx-style-' + side + '-border', border);
+        s.setProperty('--wx-style-' + side + '-shadow', shadow);
+        s.setProperty('--wx-surface-' + side + '-shadow', glass
+          ? highlight + (shadow === 'none' ? '' : ', ' + shadow) : shadow);
+        // 不可解析的历史 CSS 颜色保留原值；只有 hex 色才进行安全透明化。
+        s.setProperty('--wx-surface-' + side + '-bg', glass
+          ? glassBaseOf(color) || color || 'var(--wx-glass-' + side + '-bg-default)'
+          : color || 'var(--wx-' + side + '-bg)');
+      }
+
       s.setProperty('--wx-radius', String(cfg.radius) + 'px');
       s.setProperty('--wx-max', String(cfg.maxWidth) + '%');
       if (cfg.theme === 'system') delete root.dataset.wxTheme;
@@ -1219,6 +1285,8 @@ window.__ModuleLoader__.load({
       root.dataset.wxTimestamps = cfg.showTimestamps ? '1' : '0';
       root.dataset.wxMergeAvatars = cfg.mergeAvatars ? '1' : '0';
       root.dataset.wxToolAvatars = cfg.toolAvatars ? '1' : '0';
+      root.dataset.wxGlass = cfg.bubbleGlass === false ? '0' : '1';
+      root.dataset.wxBubbleStyle = SCHEME_BUBBLE_STYLES.indexOf(cfg.bubbleStyle) >= 0 ? cfg.bubbleStyle : 'classic';
     }
     // 清理边界：只撤上面 ROOT_STYLE_PROPS / ROOT_DATASETS 里自己写过的那份。
     /** 卸载时只撤销本插件写过的根变量/dataset，别人写的一律不动。 */
@@ -2456,6 +2524,9 @@ window.__ModuleLoader__.load({
   --wx-ai-border: rgba(197, 164, 104, 0.42);
   --wx-ai-shadow: 0 4px 14px rgba(19, 38, 87, 0.08);
   --wx-ai-text: #172347;
+  /* 轻微玻璃（2.4.1）：默认玻璃底 ≈0.90 不透明度（黑/白两个端点上文字对比都 ≥4.5，见 glassBaseOf） */
+  --wx-glass-user-bg-default: rgba(232, 237, 249, 0.90);
+  --wx-glass-ai-bg-default: rgba(248, 250, 255, 0.90);
 }
 /* 派生变量：在**根**和**每个会话作用域**各声明一次。
    只把「基数」留给出配置写入（内联变量），作用域没有内联值时自然继承根上的默认方案值，
@@ -2474,6 +2545,8 @@ body[data-ds-dark-theme] {
   --wx-ai-border: rgba(211, 180, 119, 0.40);
   --wx-ai-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
   --wx-ai-text: #edf1fa;
+  --wx-glass-user-bg-default: rgba(30, 47, 90, 0.92);
+  --wx-glass-ai-bg-default: rgba(18, 31, 67, 0.90);
 }
 /* 强制主题：既要作用于根（默认方案/面板外），也要作用于**会话作用域元素**与弹窗宿主。
    裸 [data-wx-theme] 选择器就是给后者用的：变量写在最近的祖先上，作用域内的元素自然就近继承。 */
@@ -2485,6 +2558,8 @@ html[data-wx-theme='dark'],
   --wx-ai-bg: rgba(18, 31, 67, 0.94);
   --wx-ai-border: rgba(211, 180, 119, 0.40);
   --wx-ai-text: #edf1fa;
+  --wx-glass-user-bg-default: rgba(30, 47, 90, 0.92);
+  --wx-glass-ai-bg-default: rgba(18, 31, 67, 0.90);
   --wx-panel-bg: var(--dsw-alias-bg-layer-1, #111a30);
   --wx-panel-fg: var(--dsw-alias-label-primary, #edf1fa);
   --wx-panel-sub: var(--dsw-alias-label-secondary, #b9c4dc);
@@ -2498,6 +2573,9 @@ html[data-wx-theme='light'],
   --wx-ai-bg: rgba(248, 250, 255, 0.94);
   --wx-ai-border: rgba(197, 164, 104, 0.42);
   --wx-ai-text: #172347;
+  /* 强制浅色下也必须给出**浅色**玻璃默认底：否则会继承 body 深色留下的那份（2.5.0 修正） */
+  --wx-glass-user-bg-default: rgba(232, 237, 249, 0.90);
+  --wx-glass-ai-bg-default: rgba(248, 250, 255, 0.90);
   /* 面板在「暗色宿主 + 强制浅色方案」下也要有亮底，避免深字叠深底 */
   --wx-panel-bg: var(--dsw-alias-bg-layer-1, #ffffff);
   --wx-panel-fg: var(--dsw-alias-label-primary, #172347);
@@ -2584,6 +2662,12 @@ html[data-wx-theme='light'],
   /* 自定义气泡色时用按背景亮度算出的对比色（未自定义则为 initial → 走本主题的 --wx-user-text） */
   color: var(--wx-bubble-user-text, var(--wx-user-text));
 }
+/* 宿主 Markdown 容器会自设 color，必须在这一层也使用气泡文字色。
+   只修正文容器继承；代码块和语法高亮自己的颜色保持原样。 */
+.xz4KEq_flowItem[data-chat-flow-kind='user'] [class*='userRow'] [class*='bubble'] [class*='markdown'],
+.xz4KEq_flowItem[data-chat-flow-kind='steering'] [class*='userRow'] [class*='bubble'] [class*='markdown'] {
+  color: var(--wx-bubble-user-text, var(--wx-user-text));
+}
 .xz4KEq_flowItem[data-chat-flow-kind='user'] [class*='userStack'],
 .xz4KEq_flowItem[data-chat-flow-kind='steering'] [class*='userStack'] {
   max-width: min(var(--wx-max), 100%);
@@ -2604,6 +2688,32 @@ html[data-wx-theme='light'],
   /* 同上：自定义 AI 气泡色时用对比色，未自定义时走本主题的 --wx-ai-text */
   color: var(--wx-bubble-ai-text, var(--wx-ai-text));
 }
+/* 完整的作用域变量同时用于实际气泡与预览；不靠任意祖先属性匹配开关。 */
+.xz4KEq_flowItem[data-chat-flow-kind='assistant-step']:not([data-chat-group-part='reasoning']) > [data-slot] > * > * > div[class*='markdown'] {
+  border-color: var(--wx-style-ai-border, var(--wx-ai-border));
+  box-shadow: var(--wx-style-ai-shadow, var(--wx-ai-shadow));
+}
+.xz4KEq_flowItem[data-chat-flow-kind='user'] [class*='userRow'] [class*='bubble'],
+.xz4KEq_flowItem[data-chat-flow-kind='steering'] [class*='userRow'] [class*='bubble'] {
+  border-color: var(--wx-style-user-border, var(--wx-user-border));
+  box-shadow: var(--wx-style-user-shadow, var(--wx-user-shadow));
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+.xz4KEq_flowItem[data-chat-flow-kind='assistant-step']:not([data-chat-group-part='reasoning']) > [data-slot] > * > * > div[class*='markdown'] {
+  background: var(--wx-surface-ai-bg, var(--wx-bubble-ai, var(--wx-ai-bg)));
+  -webkit-backdrop-filter: var(--wx-surface-filter, none);
+  backdrop-filter: var(--wx-surface-filter, none);
+  box-shadow: var(--wx-surface-ai-shadow, var(--wx-ai-shadow));
+}
+.xz4KEq_flowItem[data-chat-flow-kind='user'] [class*='userRow'] [class*='bubble'],
+.xz4KEq_flowItem[data-chat-flow-kind='steering'] [class*='userRow'] [class*='bubble'] {
+  background: var(--wx-surface-user-bg, var(--wx-bubble-user, var(--wx-user-bg)));
+  -webkit-backdrop-filter: var(--wx-surface-filter, none);
+  backdrop-filter: var(--wx-surface-filter, none);
+  box-shadow: var(--wx-surface-user-shadow, var(--wx-user-shadow));
+}
+}
+
 /* 气泡内宽表格横向滚动，不出气泡。
    宿主 .v5IAXa_body .md-table-wide 会按聊天列计算跨栏 width / 负 margin / padding，
    只改 max-width 会保留跨栏偏移、使可见区域错位；这里一并还原为气泡内的正常宽度。
@@ -3086,6 +3196,7 @@ html[data-wx-theme='light'],
   color: var(--dsw-alias-label-secondary, #4d5d7f);
   cursor: pointer;
 }
+.wxcfg [data-wx-bubble-style-option][aria-pressed='true'],
 .wxcfg-tab[aria-selected='true'] {
   background: var(--dsw-alias-button-primary-fill, #4d6bfe);
   border-color: transparent;
@@ -3214,7 +3325,7 @@ html[data-wx-theme='light'],
 .wxprev-bubble {
   max-width: 62%;
   padding: 8px 12px;
-  border-radius: 12px 12px 12px 7px;
+  border-radius: var(--wx-radius, 12px) var(--wx-radius, 12px) var(--wx-radius, 12px) 7px;
   background: var(--wx-bubble-ai, var(--wx-ai-bg, rgba(248, 250, 255, 0.94)));
   border: 1px solid var(--wx-ai-border, rgba(197, 164, 104, 0.42));
   box-shadow: var(--wx-ai-shadow, none);
@@ -3222,10 +3333,33 @@ html[data-wx-theme='light'],
   font-size: 13px;
 }
 .wxprev-row--user .wxprev-bubble {
-  border-radius: 12px 12px 7px 12px;
+  border-radius: var(--wx-radius, 12px) var(--wx-radius, 12px) 7px var(--wx-radius, 12px);
   background: var(--wx-bubble-user, var(--wx-user-bg, rgba(232, 237, 249, 0.95)));
   border-color: var(--wx-user-border, rgba(197, 164, 104, 0.48));
   color: var(--wx-bubble-user-text, var(--wx-user-text, inherit));
+}
+/* 完整的作用域变量同时用于实际气泡与预览；不靠任意祖先属性匹配开关。 */
+.wxprev-bubble {
+  border-color: var(--wx-style-ai-border, var(--wx-ai-border));
+  box-shadow: var(--wx-style-ai-shadow, var(--wx-ai-shadow));
+}
+.wxprev-row--user .wxprev-bubble {
+  border-color: var(--wx-style-user-border, var(--wx-user-border));
+  box-shadow: var(--wx-style-user-shadow, var(--wx-user-shadow));
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+.wxprev-bubble {
+  background: var(--wx-surface-ai-bg, var(--wx-bubble-ai, var(--wx-ai-bg)));
+  -webkit-backdrop-filter: var(--wx-surface-filter, none);
+  backdrop-filter: var(--wx-surface-filter, none);
+  box-shadow: var(--wx-surface-ai-shadow, var(--wx-ai-shadow));
+}
+.wxprev-row--user .wxprev-bubble {
+  background: var(--wx-surface-user-bg, var(--wx-bubble-user, var(--wx-user-bg)));
+  -webkit-backdrop-filter: var(--wx-surface-filter, none);
+  backdrop-filter: var(--wx-surface-filter, none);
+  box-shadow: var(--wx-surface-user-shadow, var(--wx-user-shadow));
+}
 }
 .wxprev-facts {
   font-size: 11px;
@@ -3353,13 +3487,24 @@ html[data-wx-theme='light'],
   gap: 10px;
   align-items: flex-start;
 }
+/* 裁剪舞台（2.5.0）：正方形、窄屏自适应；画布铺满舞台，内部像素按 DPR 由 JS 设置 */
+.wxcfg-crop-stage {
+  position: relative;
+  width: min(440px, 100%);
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--wx-modal-canvas-bg);
+  box-shadow: 0 2px 10px rgba(19, 38, 87, 0.18);
+}
 .wxcfg-crop-canvas {
   display: block;
-  border-radius: var(--wx-avatar-round, 50%);
-  background: var(--wx-modal-canvas-bg);
+  width: 100%;
+  height: 100%;
+  /* 舞台不再用头像圆角裁画布：形状改由 canvas 内绘制的遮罩表现，选框本身保持方形 */
+  background: transparent;
   cursor: grab;
   touch-action: none;
-  box-shadow: 0 2px 10px rgba(19, 38, 87, 0.18);
 }
 .wxcfg-crop-canvas:active {
   cursor: grabbing;
@@ -3521,7 +3666,7 @@ html[data-wx-theme='light'],
       // 外观指纹：只有真正变了才重写宿主变量，避免每次渲染都重设一遍
       const appearanceRef = useRef(appearance);
       appearanceRef.current = appearance;
-      const APPEARANCE_KEYS = ['avatarSize', 'avatarRoundness', 'avatarBg', 'ringColor', 'theme', 'userAvatar', 'aiAvatar', 'roleAvatar', 'userLetter', 'userBubble', 'aiBubble', 'radius', 'maxWidth', 'mergeAvatars', 'showTimestamps', 'toolAvatars'];
+      const APPEARANCE_KEYS = ['avatarSize', 'avatarRoundness', 'avatarBg', 'ringColor', 'theme', 'userAvatar', 'aiAvatar', 'roleAvatar', 'userLetter', 'userBubble', 'aiBubble', 'radius', 'maxWidth', 'mergeAvatars', 'showTimestamps', 'toolAvatars', 'bubbleGlass', 'bubbleStyle'];
       const appearanceKey = appearance
         ? APPEARANCE_KEYS.map((key) => String(appearance[key])).join('|')
         : '';
@@ -3639,16 +3784,18 @@ html[data-wx-theme='light'],
     // 输出始终是完整方形像素，形状交给 CSS，避免切换圆角时出现透明角。
     // ------------------------------------------------------------------
     // ── WX-M17 裁剪器 ─────────────────────────────────────────────────────
-    // 导出始终是完整方形像素（形状交给 CSS），所以换圆角不会露透明角；
-    // 跨域图片会让 toDataURL 抛错，这里要如实报错而不是静默失败。
-    //
-    // **预览尺寸与导出分辨率分离**（2.3.2）：
-    // - 裁剪 UI 仍按 CROP_SIZE(240 CSSpx) 布局、拖动 offset 也记在 240 坐标系里（不改交互）；
-    // - 导出时按「当前 crop 几何」**从原图重画**到高分辨率方形画布（上限 CROP_EXPORT_MAX），
-    //   绝不把 240 的预览画布放大冒充高清；
-    // - 导出尺寸 = min(上限, 原图有效裁剪像素 min(naturalWidth,naturalHeight)/zoom)，源图小就不上采样；
-    // - 若某个尺寸的 PNG data URL 超过单头像预算，按阶梯**重新从原图**降尺寸重画。
-    const CROP_SIZE = 240;
+    // 完整图片舞台（2.5.0）。两套坐标，别混：
+    //   **舞台坐标**：canvas 左上角为原点、单位 CSS px。窄屏由 CSS 把舞台缩小，交互时按
+    //                 getBoundingClientRect() 现算比例，所以 CSS 缩放 / DPR / resize 都不会让
+    //                 指针产生误差或跳位；canvas 内部再乘 devicePixelRatio 保证清晰。
+    //   **源图坐标**：原始图片像素。导出时按 sourceRect 从**原图**重画，绝不放大旧预览。
+    // 状态：sel{ x, y, size }（舞台坐标里的**正方形**选区）、view{ scale, tx, ty }（图片在舞台里的缩放与左上角）。
+    // 约束：选区必须完全落在图像内（框内不露空）且保持在整个舞台可见；图片平移/缩小撞到边界就停。
+    // 形状（圆角 / 圆形）只作 **UI 遮罩**，导出永远是完整方形像素，换形状不会烘焙透明角。
+    const CROP_STAGE = 440;          // 舞台目标边长（CSS px），窄屏由 CSS 缩小
+    const CROP_HANDLE = 12;          // 角手柄边长（舞台 px）
+    const CROP_MIN_SEL = 40;         // 选区最小边长（舞台 px）
+    const CROP_SEL_INSET = 12;       // 初始选区相对舞台的内缩，留出可点的遮罩区
     const CROP_EXPORT_MAX = 1024;
     const CROP_EXPORT_MIN = 512;
     // 单个头像 data URL 的字符预算（约 2MiB）：常规照片远小于它；超了才逐级降尺寸。
@@ -3656,11 +3803,9 @@ html[data-wx-theme='light'],
     const CROP_EXPORT_LADDER = [CROP_EXPORT_MAX, 896, 768, 640, CROP_EXPORT_MIN];
 
     /**
-     * 这个已加载的 img 是不是**矢量源**（SVG）？
-     * 只看当前加载的 src / currentSrc 字符串，**不做任何跨域探测或凭据请求**：
-     * - `data:image/svg+xml` 开头的 data URL（utf8 / 带 charset / base64 都会命中前缀）；
-     * - 路径以 `.svg` 结尾的 URL（查询串/锚点先剥掉）。
-     * 其余（PNG/JPEG/GIF/WebP…）都按位图处理。
+     * 这个已加载的 img 是不是**矢量源**（SVG）？只看当前 src / currentSrc 字符串，
+     * **不做任何跨域探测或凭据请求**：`data:image/svg+xml` 前缀（utf8/charset/base64 都命中），
+     * 或路径以 `.svg` 结尾（查询串/锚点先剥掉）。其余（PNG/JPEG/GIF/WebP…）按位图处理。
      */
     function isVectorImage(img) {
       if (!img) return false;
@@ -3675,9 +3820,9 @@ html[data-wx-theme='light'],
       return false;
     }
 
-    function roundRectPath(ctx, size, radius) {
+    function roundRectPath(ctx, size, radius, startPath = true) {
       const r = Math.max(0, Math.min(size / 2, radius));
-      ctx.beginPath();
+      if (startPath) ctx.beginPath();
       ctx.moveTo(r, 0);
       ctx.lineTo(size - r, 0);
       ctx.arcTo(size, 0, size, r, r);
@@ -3690,125 +3835,315 @@ html[data-wx-theme='light'],
       ctx.closePath();
     }
 
+    // ---- 纯几何（舞台坐标 ↔ 源图坐标；都无副作用，便于单独核对） ----
+    const cropClamp = (value, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, value)));
+    /** 初始视图尽量完整显示图片；极端长图保留可操作的最小短边。 */
+    function cropFitView(imgW, imgH, stageW, stageH) {
+      const minSide = Math.min(CROP_MIN_SEL + CROP_SEL_INSET * 2, stageW, stageH);
+      const scale = Math.max(Math.min(stageW / imgW, stageH / imgH), minSide / Math.min(imgW, imgH)) || 1;
+      return { scale, tx: (stageW - imgW * scale) / 2, ty: (stageH - imgH * scale) / 2 };
+    }
+    /** 初始选区：舞台里最大的居中正方形（内缩一点，留出可拖图片的遮罩区）。 */
+    function cropFitSelection(view, imgW, imgH, stageW, stageH) {
+      const covered = Math.min(stageW - CROP_SEL_INSET * 2, stageH - CROP_SEL_INSET * 2, imgW * view.scale, imgH * view.scale);
+      const size = Math.max(CROP_MIN_SEL, covered);
+      return { x: (stageW - size) / 2, y: (stageH - size) / 2, size };
+    }
+    /** 选区钳制：始终完全在图像内，且整个选区留在舞台可见区。 */
+    function cropClampSelection(sel, view, imgW, imgH, stageW, stageH) {
+      const left = Math.max(0, view.tx);
+      const top = Math.max(0, view.ty);
+      const right = Math.min(stageW, view.tx + imgW * view.scale);
+      const bottom = Math.min(stageH, view.ty + imgH * view.scale);
+      const limit = Math.max(1, Math.min(right - left, bottom - top));
+      const size = cropClamp(sel.size, Math.min(CROP_MIN_SEL, limit), limit);
+      return { size, x: cropClamp(sel.x, left, right - size), y: cropClamp(sel.y, top, bottom - size) };
+    }
+    /** 视图钳制：选区必须落在图像里（图片可以超出舞台，但框内不能露空）。 */
+    function cropClampView(view, sel, imgW, imgH) {
+      const w = imgW * view.scale;
+      const h = imgH * view.scale;
+      return {
+        scale: view.scale,
+        tx: cropClamp(view.tx, sel.x + sel.size - w, sel.x),
+        ty: cropClamp(view.ty, sel.y + sel.size - h, sel.y),
+      };
+    }
+    /** 缩放视图：**选区在舞台上的位置与大小保持不变**，只改图片缩放（并保证图片仍然盖住选区）。 */
+    function cropZoomView(view, sel, nextScale, imgW, imgH, maxScale) {
+      const minScale = Math.max(sel.size / imgW, sel.size / imgH);   // 再小就盖不住选区了
+      const scale = cropClamp(nextScale, minScale, Math.max(minScale, maxScale || minScale * 8));
+      const cx = sel.x + sel.size / 2;
+      const cy = sel.y + sel.size / 2;
+      const ratio = scale / view.scale;
+      return cropClampView({ scale, tx: cx - (cx - view.tx) * ratio, ty: cy - (cy - view.ty) * ratio }, sel, imgW, imgH);
+    }
+    /** 选区 → 源图矩形（导出用）。 */
+    function cropSourceRect(sel, view, imgW, imgH) {
+      const side = sel.size / view.scale;
+      const sx = cropClamp((sel.x - view.tx) / view.scale, 0, Math.max(0, imgW - side));
+      const sy = cropClamp((sel.y - view.ty) / view.scale, 0, Math.max(0, imgH - side));
+      const size = Math.min(side, imgW, imgH);
+      return { sx, sy, size };
+    }
+
     function AvatarCropper({ src, title, roundness, onCancel, onApply, onError }) {
+      const stageRef = useRef(null);
       const canvasRef = useRef(null);
       const imgRef = useRef(null);
       const dragRef = useRef(null);
-      const [zoom, setZoom] = useState(1);
-      const [offset, setOffset] = useState({ x: 0, y: 0 });
+      const loadRef = useRef(0);            // src 代次：迟到的 onload/onerror 直接丢弃
+      const [stage, setStage] = useState({ w: CROP_STAGE, h: CROP_STAGE });
+      const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
+      const [sel, setSel] = useState({ x: 0, y: 0, size: CROP_MIN_SEL });
+      const [fitScale, setFitScale] = useState(1);
       const [ready, setReady] = useState(false);
+      const [busy, setBusy] = useState(false);
 
-      /**
-       * 当前 zoom 下，方形裁剪区覆盖的**位图**原图像素数（短边）——导出分辨率的上限来源。
-       * 例：2048² 图 zoom=1 → 2048；zoom=2 → 1024；100² 图 → 100。
-       * **矢量源（SVG）不走这条**：它没有"原生像素"概念，标称 32×32 的 SVG 也能无损画到 1024，
-       * 按 naturalWidth 当上限反而会比旧版 240 还糊。
-       */
-      const sourceCropPixels = useCallback((imgRefValue) => {
-        // 每次都读**当前已加载的那个 img**（以及它此刻的 currentSrc/src），不用闭包里缓存的 src
-        const img = imgRefValue || imgRef.current;
-        if (!img || !img.naturalWidth) return 0;
-        if (isVectorImage(img)) return CROP_EXPORT_MAX;   // 矢量：允许画到上限，只受字节预算约束
-        const side = Math.min(img.naturalWidth, img.naturalHeight);
-        return Math.max(1, Math.floor(side / (zoom || 1)));
-      }, [zoom]);
-
-
-      /**
-       * 同一套几何：size 变化时按比例缩放，**offset 也要同比缩放**
-       * （offset 记在 CROP_SIZE 坐标系里，导出尺寸不同必须换算，否则内容会偏）。
-       */
-      const geom = useCallback((size, ox, oy) => {
+      const imgSize = () => {
         const img = imgRef.current;
-        const base = Math.max(size / img.naturalWidth, size / img.naturalHeight);
-        const scale = base * zoom;
-        const w = img.naturalWidth * scale;
-        const h = img.naturalHeight * scale;
-        const k = size / CROP_SIZE;
-        const dx = (ox === undefined ? offset.x : ox) * k;
-        const dy = (oy === undefined ? offset.y : oy) * k;
-        return { x: (size - w) / 2 + dx, y: (size - h) / 2 + dy, w, h };
-      }, [zoom, offset]);
+        return img && img.naturalWidth ? { w: img.naturalWidth, h: img.naturalHeight } : { w: 0, h: 0 };
+      };
+      /** 重置到「图片适应舞台 + 居中最大正方形」。 */
+      const resetAll = useCallback((stageW, stageH) => {
+        const { w, h } = imgSize();
+        if (!w || !h) return;
+        const nextView = cropFitView(w, h, stageW, stageH);
+        const nextSel = cropFitSelection(nextView, w, h, stageW, stageH);
+        setView(nextView);
+        setSel(cropClampSelection(nextSel, nextView, w, h, stageW, stageH));
+        setFitScale(nextView.scale);
+      }, []);
 
-      const draw = useCallback(() => {
-        const canvas = canvasRef.current;
-        const img = imgRef.current;
-        if (!canvas || !img || !img.naturalWidth) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = CROP_SIZE * dpr;
-        canvas.height = CROP_SIZE * dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.imageSmoothingEnabled = true;
-        if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
-        ctx.clearRect(0, 0, CROP_SIZE, CROP_SIZE);
-        const g = geom(CROP_SIZE);
-        const radius = CROP_SIZE * ((clampNumber(roundness, 0, 100, AVATAR_ROUNDNESS_DEFAULT) / 2) / 100);
-        ctx.save();
-        roundRectPath(ctx, CROP_SIZE, radius);
-        ctx.clip();
-        ctx.drawImage(img, g.x, g.y, g.w, g.h);
-        ctx.restore();
-        // 形状外压暗
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, CROP_SIZE, CROP_SIZE);
-        roundRectPath(ctx, CROP_SIZE, radius);
-        ctx.fillStyle = 'rgba(10, 18, 40, 0.5)';
-        ctx.fill('evenodd');
-        ctx.restore();
-        roundRectPath(ctx, CROP_SIZE, radius);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }, [geom, roundness]);
-
+      // 加载源图：src 变了就换一份代次，旧图的回调一律作废（避免迟到加载覆盖新图）
       useEffect(() => {
+        const generation = loadRef.current + 1;
+        loadRef.current = generation;
+        dragRef.current = null;
+        imgRef.current = null;
+        setReady(false);
+        setBusy(false);
         const img = document.createElement('img');
         img.decoding = 'async';
         img.onload = () => {
+          if (loadRef.current !== generation) return;
           imgRef.current = img;
           setReady(true);
         };
         img.onerror = () => {
+          if (loadRef.current !== generation) return;
+          imgRef.current = null;
           if (onError) onError('图片加载失败（可能是无效链接或跨域图片），建议用「上传」选本地图片。');
         };
         img.src = src;
+        return () => {
+          if (loadRef.current === generation) loadRef.current += 1;
+          img.onload = null; img.onerror = null;
+          dragRef.current = null;
+        };
       }, [src]);
 
+      // 舞台 CSS 尺寸（窄屏会缩）：挂载时量一次 + 窗口 resize 时重量；尺寸变化按比例缩放几何，避免跳位
       useEffect(() => {
-        if (ready) draw();
-      }, [ready, draw]);
+        const measure = () => {
+          const node = stageRef.current;
+          if (!node) return;
+          const w = Math.round(node.clientWidth) || CROP_STAGE;
+          const h = Math.round(node.clientHeight) || w;
+          setStage((prev) => {
+            if (prev.w === w && prev.h === h) return prev;
+            const kx = prev.w ? w / prev.w : 1;
+            const ky = prev.h ? h / prev.h : 1;
+            const k = Math.min(kx, ky);
+            dragRef.current = null;
+            setFitScale((value) => value * k);
+            setView((v) => ({ scale: v.scale * k, tx: v.tx * kx, ty: v.ty * ky }));
+            setSel((s) => ({ x: s.x * kx, y: s.y * ky, size: s.size * k }));
+            return { w, h };
+          });
+        };
+        measure();
+        window.addEventListener('resize', measure);
+        return () => window.removeEventListener('resize', measure);
+      }, []);
 
-      const onDown = (e) => {
-        dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+      // 仅新图就绪时复位；窗口缩放已按比例换算，不能再次清空用户取景。
+      useEffect(() => {
+        if (!ready) return;
+        resetAll(stage.w, stage.h);
+      }, [ready, resetAll]);
+
+      // 绘制：图 → 选区外压暗 → 形状遮罩 → 选框与四角手柄
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        const img = imgRef.current;
+        if (!canvas || !img || !ready) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        canvas.width = Math.round(stage.w * dpr);
+        canvas.height = Math.round(stage.h * dpr);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+        ctx.clearRect(0, 0, stage.w, stage.h);
+        // 图片（view 是舞台坐标）
         try {
-          if (e.currentTarget.setPointerCapture && e.pointerId !== undefined) {
-            e.currentTarget.setPointerCapture(e.pointerId);
-          }
-        } catch (_err) {
-          /* 指针捕获失败不影响拖动 */
+          ctx.drawImage(img, view.tx, view.ty, img.naturalWidth * view.scale, img.naturalHeight * view.scale);
+        } catch (_err) { /* 画不出来就让下面的遮罩提示 */ }
+        // 选区外压暗
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, stage.w, stage.h);
+        ctx.rect(sel.x, sel.y, sel.size, sel.size);
+        ctx.fillStyle = 'rgba(10, 18, 40, 0.5)';
+        ctx.fill('evenodd');
+        ctx.restore();
+        // 形状遮罩（只影响观感：圆角/圆形由头像设置决定；导出仍是完整方形）
+        const radius = sel.size * ((clampNumber(roundness, 0, 100, AVATAR_ROUNDNESS_DEFAULT) / 2) / 100);
+        ctx.save();
+        ctx.translate(sel.x, sel.y);
+        ctx.beginPath();
+        ctx.rect(0, 0, sel.size, sel.size);
+        roundRectPath(ctx, sel.size, radius, false);
+        ctx.fillStyle = 'rgba(10, 18, 40, 0.35)';
+        ctx.fill('evenodd');
+        ctx.restore();
+        // 选框 + 四角手柄
+        ctx.save();
+        ctx.translate(sel.x, sel.y);
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0, 0, sel.size, sel.size);
+        ctx.setLineDash([]);
+        roundRectPath(ctx, sel.size, radius);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.strokeStyle = 'rgba(10, 18, 40, 0.45)';
+        ctx.lineWidth = 1;
+        for (const [hx, hy] of [[0, 0], [sel.size, 0], [0, sel.size], [sel.size, sel.size]]) {
+          const x = hx - CROP_HANDLE / 2;
+          const y = hy - CROP_HANDLE / 2;
+          ctx.fillRect(x, y, CROP_HANDLE, CROP_HANDLE);
+          ctx.strokeRect(x, y, CROP_HANDLE, CROP_HANDLE);
+        }
+        ctx.restore();
+      }, [view, sel, stage, ready, roundness]);
+
+      /** 指针位置 → 舞台坐标（按实际 rect 现算，CSS 缩放/DPR 都吃得住）。 */
+      const stagePoint = (event) => {
+        const node = stageRef.current;
+        if (!node) return { x: 0, y: 0 };
+        const rect = node.getBoundingClientRect();
+        const sx = rect.width ? stage.w / rect.width : 1;
+        const sy = rect.height ? stage.h / rect.height : 1;
+        return { x: (event.clientX - rect.left) * sx, y: (event.clientY - rect.top) * sy };
+      };
+      const cornerOf = (point) => {
+        const tol = CROP_HANDLE / 2 + 4;
+        const corners = [['nw', 0, 0], ['ne', 1, 0], ['sw', 0, 1], ['se', 1, 1]];
+        for (const [name, gx, gy] of corners) {
+          const cx = sel.x + gx * sel.size;
+          const cy = sel.y + gy * sel.size;
+          if (Math.abs(point.x - cx) <= tol && Math.abs(point.y - cy) <= tol) return { name, gx, gy };
+        }
+        return null;
+      };
+
+      const onPointerDown = (event) => {
+        if (!ready || dragRef.current || event.isPrimary === false || event.button !== undefined && event.button !== 0) return;
+        const point = stagePoint(event);
+        const node = event.currentTarget;
+        const corner = cornerOf(point);
+        const inside = point.x >= sel.x && point.x <= sel.x + sel.size && point.y >= sel.y && point.y <= sel.y + sel.size;
+        // 遮罩外 → 拖图片（框留在屏幕原处）；框内 → 移框；角手柄 → 等比例调整（锚定对角）
+        dragRef.current = corner
+          ? { mode: 'resize', corner, anchorX: corner.gx === 0 ? sel.x + sel.size : sel.x, anchorY: corner.gy === 0 ? sel.y + sel.size : sel.y }
+          : inside
+            ? { mode: 'move', dx: point.x - sel.x, dy: point.y - sel.y }
+            : { mode: 'pan', dx: point.x - view.tx, dy: point.y - view.ty };
+        dragRef.current.pointerId = event.pointerId;
+        dragRef.current.lastPoint = point;
+        try { if (node.setPointerCapture && event.pointerId !== undefined) node.setPointerCapture(event.pointerId); } catch (_err) { /* 捕获失败不影响拖动 */ }
+        event.preventDefault();
+      };
+      const endDrag = () => { dragRef.current = null; };
+      const onPointerMove = (event) => {
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const { w: imgW, h: imgH } = imgSize();
+        if (!imgW || !imgH) return;
+        const point = stagePoint(event);
+        drag.lastPoint = point;
+        if (drag.mode === 'pan') {
+          setView((v) => cropClampView({ scale: v.scale, tx: point.x - drag.dx, ty: point.y - drag.dy }, sel, imgW, imgH));
+        } else if (drag.mode === 'move') {
+          setSel((s) => cropClampSelection({ ...s, x: point.x - drag.dx, y: point.y - drag.dy }, view, imgW, imgH, stage.w, stage.h));
+        } else {
+          // 等比例：以**对角**为锚点，边长取指针到锚点的较大投影；再钳进图像与舞台
+          const { anchorX, anchorY } = drag;
+          const left = Math.max(0, view.tx), top = Math.max(0, view.ty);
+          const right = Math.min(stage.w, view.tx + imgW * view.scale);
+          const bottom = Math.min(stage.h, view.ty + imgH * view.scale);
+          const maxSide = Math.max(1, Math.min(
+            drag.corner.gx === 0 ? anchorX - left : right - anchorX,
+            drag.corner.gy === 0 ? anchorY - top : bottom - anchorY));
+          const projectedX = drag.corner.gx === 0 ? anchorX - point.x : point.x - anchorX;
+          const projectedY = drag.corner.gy === 0 ? anchorY - point.y : point.y - anchorY;
+          const side = cropClamp(Math.max(projectedX, projectedY), Math.min(CROP_MIN_SEL, maxSide), maxSide);
+          const x = drag.corner.gx === 0 ? anchorX - side : anchorX;
+          const y = drag.corner.gy === 0 ? anchorY - side : anchorY;
+          setSel(cropClampSelection({ x, y, size: side }, view, imgW, imgH, stage.w, stage.h));
         }
       };
-      const onMove = (e) => {
-        const d = dragRef.current;
-        if (!d) return;
-        setOffset({ x: d.ox + (e.clientX - d.x), y: d.oy + (e.clientY - d.y) });
-      };
-      const onUp = () => {
-        dragRef.current = null;
+
+      // 滚轮缩放：只在裁剪舞台上拦（native non-passive），框的位置与大小保持不变
+      useEffect(() => {
+        const node = stageRef.current;
+        if (!node) return undefined;
+        const onWheel = (event) => {
+          const { w: imgW, h: imgH } = imgSize();
+          if (!ready || !imgW || !imgH || !event.deltaY) return;
+          event.preventDefault();
+          const factor = event.deltaY < 0 ? 1.08 : 1 / 1.08;
+          setView((v) => {
+            const next = cropZoomView(v, sel, v.scale * factor, imgW, imgH, fitScale * 8);
+            const drag = dragRef.current;
+            if (drag && drag.mode === 'pan' && drag.lastPoint) {
+              drag.dx = drag.lastPoint.x - next.tx;
+              drag.dy = drag.lastPoint.y - next.ty;
+            }
+            return next;
+          });
+        };
+        node.addEventListener('wheel', onWheel, { passive: false });
+        return () => node.removeEventListener('wheel', onWheel);
+      }, [sel, stage.w, stage.h, fitScale, ready]);
+
+      const sliderValue = fitScale > 0 && view.scale ? Math.round((view.scale / fitScale) * 100) : 100;
+      const dimensions = imgSize();
+      const sliderMin = dimensions.w && dimensions.h && fitScale
+        ? Math.max(1, Math.ceil(Math.max(sel.size / dimensions.w, sel.size / dimensions.h) / fitScale * 100)) : 100;
+      const onSlider = (event) => {
+        const { w: imgW, h: imgH } = imgSize();
+        const next = Number(event.target.value) / 100;
+        if (!imgW || !imgH || !fitScale) return;
+        setView((v) => cropZoomView(v, sel, fitScale * next, imgW, imgH, fitScale * 8));
       };
 
       const apply = () => {
         const img = imgRef.current;
-        if (!img || !img.naturalWidth) return;
-        // 从**原图**按当前 crop 几何画到高分辨率输出（不是放大预览画布）。
-        // 尺寸阶梯 + 单头像预算：常规图一次成功；高熵图逐级降尺寸，每一步都重新从原图画。
-        // 阶梯**从真实 cap 开始**（例如 cap=853 就先试 853，而不是跳到 768），
-        // 后面只接比 cap 小的预设档位 → 严格降序、无重复（cap=1024 时不会出现两个 1024）。
-        const cap = Math.min(CROP_EXPORT_MAX, sourceCropPixels());
+        if (!img || !img.naturalWidth || busy) return;
+        const { w: imgW, h: imgH } = imgSize();
+        const vector = isVectorImage(img);
+        const rect = cropSourceRect(sel, view, imgW, imgH);
+        // 导出上限：位图不超过原图有效裁剪像素（不上采样），矢量可以画到上限
+        const cap = vector ? CROP_EXPORT_MAX : Math.max(1, Math.min(CROP_EXPORT_MAX, Math.floor(rect.size)));
         const ladder = [cap].concat(CROP_EXPORT_LADDER.filter((s) => s < cap));
+        setBusy(true);
         let lastUrl = '';
         for (const size of ladder) {
           if (!size || size < 1) continue;
@@ -3817,54 +4152,52 @@ html[data-wx-theme='light'],
           out.height = size;
           const ctx = out.getContext('2d');
           if (!ctx) continue;
-          // 高质量平滑：缩小（常见情况）时靠它避免摩尔纹/锯齿
           ctx.imageSmoothingEnabled = true;
           if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
-          const g = geom(size);
-          // 输出整张方形（不裁圆、不裁圆角）：形状由 CSS 负责，
-          // 切换圆角时不会露出透明角，也不会丢像素；alpha 原样保留。
-          ctx.drawImage(img, g.x, g.y, g.w, g.h);
+          // 从**原图**按选区重画成完整方形（不裁圆角、不烘焙透明角，alpha 原样保留）
+          ctx.drawImage(img, rect.sx, rect.sy, rect.size, rect.size, 0, 0, size, size);
           let url = '';
           try {
             url = out.toDataURL('image/png');
           } catch (_err) {
+            setBusy(false);
             if (onError) onError('这张图片无法裁剪（跨域图片会被画布拒绝），请用「上传」选本地图片。');
             return;
           }
           lastUrl = url;
-          if (url.length <= CROP_EXPORT_BUDGET) break;      // 常规路径：第一个（最大）尺寸就够小
+          if (url.length <= CROP_EXPORT_BUDGET) break;   // 常规路径：第一个（最大）尺寸就够小
         }
-        if (!lastUrl) return;
-        onApply(lastUrl);
+        setBusy(false);
+        if (lastUrl) onApply(lastUrl);
       };
 
       return h('div', { className: 'wxcfg-crop' },
         title ? h('div', { className: 'wxcfg-title' }, title) : null,
-        h('canvas', {
-          ref: canvasRef,
-          className: 'wxcfg-crop-canvas',
-          style: { width: CROP_SIZE + 'px', height: CROP_SIZE + 'px' },
-          onPointerDown: onDown,
-          onPointerMove: onMove,
-          onPointerUp: onUp,
-          onPointerCancel: onUp,
-        }),
+        h('div', { className: 'wxcfg-crop-stage', ref: stageRef },
+          h('canvas', {
+            ref: canvasRef,
+            className: 'wxcfg-crop-canvas',
+            onPointerDown,
+            onPointerMove,
+            onPointerUp: endDrag,
+            onPointerCancel: endDrag,
+            onLostPointerCapture: endDrag,
+          })),
         h('div', { className: 'wxcfg-row' },
           h('span', { className: 'wxcfg-label' }, '缩放'),
           h('input', {
-            type: 'range', min: 1, max: 3, step: 0.01, value: zoom,
-            onChange: (e) => setZoom(Number(e.target.value)),
+            type: 'range', min: sliderMin, max: 800, step: 1, value: sliderValue,
+            onChange: onSlider,
           }),
-          h('button', { onClick: () => { setZoom(1); setOffset({ x: 0, y: 0 }); } }, '复位'),
+          h('button', { onClick: () => resetAll(stage.w, stage.h) }, '复位'),
         ),
         h('div', { className: 'wxcfg-row' },
-          h('button', { className: 'wxcfg-primary', onClick: apply }, '应用裁剪'),
+          h('button', { className: 'wxcfg-primary', disabled: !ready || busy, onClick: apply }, busy ? '正在导出…' : '应用裁剪'),
           h('button', { onClick: onCancel }, '取消'),
-          h('span', { className: 'wxcfg-hint' }, '拖动图片调位置，滑块缩放；框内就是头像最终效果（形状跟随头像圆角设置，输出是完整方形）。'),
+          h('span', { className: 'wxcfg-hint' }, '框内拖动移动选区，四角手柄等比例调整，遮罩处拖动图片，滚轮缩放；虚线框内就是头像最终范围（形状跟随头像圆角设置，输出是完整方形）。'),
         ),
       );
     }
-
     // ------------------------------------------------------------------
     // 头像选择行（缩略图 + URL + 上传 + 裁剪/转静态 + 清除）——配置面板复用
     // ------------------------------------------------------------------
@@ -4864,6 +5197,26 @@ html[data-wx-theme='light'],
             value: cfg.maxWidth,
             onChange: (e) => update({ maxWidth: Number(e.target.value) }),
           })),
+          // 2.5.0：轻微玻璃开关（独立于样式）+ 三款气泡样式；只影响本方案外观，历史头像身份不受影响
+          row('毛玻璃', ...[
+            h('input', {
+              type: 'checkbox',
+              'data-wx-bubble-glass': '',
+              checked: cfg.bubbleGlass !== false,
+              onChange: (e) => update({ bubbleGlass: e.target.checked }),
+            }),
+            h('span', { className: 'wxcfg-hint' }, '柔化透出的背景，保持文字清晰'),
+          ]),
+          row('气泡样式', ...[
+            ...BUBBLE_STYLE_CHOICES.map(([id, label]) => h('button', {
+              key: id,
+              type: 'button',
+              'data-wx-bubble-style-option': id,
+              'aria-pressed': (SCHEME_BUBBLE_STYLES.indexOf(cfg.bubbleStyle) >= 0 ? cfg.bubbleStyle : 'classic') === id ? 'true' : 'false',
+              onClick: () => update({ bubbleStyle: id }),
+            }, label)),
+            h('span', { className: 'wxcfg-hint' }, '经典：原风格｜柔光：更细的边线 + 更柔阴影｜描边：清楚细线、近乎无外阴影'),
+          ]),
         ])),
         panel('look', section('行为', ...[
           row('时间戳', h('input', {

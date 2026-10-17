@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-wx-chat",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
-  "description": "WeChat-style chat layout for the DeepSeek Harness conversation: user bubbles right with avatar, DeepSeek bubbles left. Adds per-turn tool/type avatars, a labeled roleplay-avatar entry with per-turn mode boundaries, tabbed settings, a size/appearance preview modal with restore, a standalone centered crop modal, click-to-preview, solid/transparent avatar backgrounds, GIF support, in-bubble scrolling for wide markdown tables with contrast-safe custom bubble colours, high-resolution crop export (up to 1024px) with a size budget, bubble-aware inline-code colours, per-turn avatar history (IndexedDB), and shareable per-session avatar schemes (create/copy/rename/delete/import/export, one scheme per session). Presentation-only UI layer.",
+  "description": "WeChat-style chat layout for the DeepSeek Harness conversation: user bubbles right with avatar, DeepSeek bubbles left. Adds per-turn tool/type avatars, a labeled roleplay-avatar entry with per-turn mode boundaries, tabbed settings, a size/appearance preview modal with restore, a standalone centered crop modal, click-to-preview, solid/transparent avatar backgrounds, GIF support, in-bubble scrolling for wide markdown tables with contrast-safe custom bubble colours, high-resolution crop export (up to 1024px) with a size budget, bubble-aware inline-code colours, per-turn avatar history (IndexedDB), subtle frosted-glass bubbles with a glass toggle and three bubble styles, and shareable per-session avatar schemes (create/copy/rename/delete/import/export, one scheme per session). Presentation-only UI layer.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
