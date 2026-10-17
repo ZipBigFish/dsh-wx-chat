@@ -1,6 +1,6 @@
 /**
  * dsh-wx-chat —— DeepSeek Harness 微信风聊天气泡（Client half）。
- * @version 2.8.0
+ * @version 2.8.1
  *
  * 设计原则（presentation-only）：
  * - 不替换任何 `conversation.chat.node` 渲染器，Markdown/代码高亮/流式/
@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
     // ── WX-M02 常量与默认配置 ─────────────────────────────────────────────
     // 两个 localStorage 键：CONFIG_KEY 存整份配置，ROLE_MODE_KEY 存「每会话角色模式边界」。
     const PACKAGE_NAME = '@local/dsh-wx-chat';
-    const VERSION = '2.8.0';
+    const VERSION = '2.8.1';
     const CONFIG_KEY = 'dsh-wx-chat/config-v1';
     const ROLE_MODE_KEY = 'dsh-wx-chat/roleplay-v1';
 
@@ -1213,6 +1213,8 @@ window.__ModuleLoader__.load({
       '--wx-skin-border-color', '--wx-skin-shadow',
       '--wx-skin-user-inset', '--wx-skin-ai-inset', '--wx-skin-align', '--wx-skin-code-bg', '--wx-skin-code-ink',
       '--wx-skin-min-height',
+      // 2.8.1：人物改由 border-image 单角从气泡下缘伸出（右下角取整图，slice/width/outset 三段控制）
+      '--wx-skin-image-width', '--wx-skin-image-outset',
       // 分层矢量皮肤（2.8.0）：每层各自的 url / 尺寸 / 位置；卸载时随其余派生变量一起清掉
       '--wx-skin-mode', '--wx-vec-body', '--wx-vec-skin', '--wx-vec-edge', '--wx-vec-crest', '--wx-vec-corner',
       '--wx-vec-char', '--wx-vec-edge-size', '--wx-vec-crest-size', '--wx-vec-corner-size', '--wx-vec-char-size',
@@ -1267,21 +1269,25 @@ window.__ModuleLoader__.load({
         crestW: 48, crestH: 24,    // 中间装饰：48×24 独立不拉伸，顶/底居中
         cornerSize: 28,            // 四角装饰：28×28 对齐四角
         charW: 64, charH: 64,      // 鱼鱼原画正方形；莉栀在 profile 中按原图 320:292 校正高度
-        padTop: 24, padBottom: 24, // 文字避开 24px 中心装饰；底边不再预留整个人物的高度
-        padX: 16,                  // 左右最小留白
-        charReserve: 64,           // 角色占位：正文让出的宽度
+        padTop: 24, padBottom: 24, // 文字避开 24px 中心装饰
+        padX: 16,                  // 2.8.1：正文不再为人物让出整列，左右都只留 16px
+        charReserve: 0,            // 人物悬在气泡外，正文不需要让位
+        // 人物与气泡重叠 = 角色显示高度的 1/3（用户口径：三分之一在内、三分之二在外）
+        charOverlapRatio: 1 / 3,
+        charGap: 8,                // 外悬人物与下一条消息之间至少留 8px
         minH: 72, min: 180,
       }, extra);
       const profiles = {
         // 猫身体/脚保留弹性，只把写字区域向上校正并水平居中。
         cat: { mode: 'slice', asset: 'cat', slice: [44, 18, 28, 24], edge: [42, 30, 27, 44], textEdge: [32, 37, 37, 37], min: 200, minH: 0, padTop: 3, padBottom: 6, padX: 6 },
-        // 分层矢量皮肤：角色与装饰独立、永不拉伸
+        // 分层矢量皮肤：框体由 background 层绘制，人物改由 border-image 右下单角从下缘伸出
         lizhi: V('dragon', { charH: 58.4 }), // 64 × 292 / 320；保留角色原画比例
-        pastoral: V('pastoral', { charReserve: 0, minH: 58 }),
+        // 田园 / 水波没有人物：显式 charH=0，禁用「右下单角 + 下缘外悬」那套，避免多留人物间距
+        pastoral: V('pastoral', { charH: 0, minH: 58 }),
         yuyu: V('yuyu'),
         'yuyu-cat': V('yuyu-cat'),
         // ocean：整幅矢量背景（非九宫格），四周约 10–14px padding，短句自然紧凑
-        ocean: V('ocean', { full: true, padTop: 12, padBottom: 14, padX: 14, charReserve: 0, minH: 52, min: 160 }),
+        ocean: V('ocean', { full: true, charH: 0, padTop: 12, padBottom: 14, padX: 14, minH: 52, min: 160 }),
       };
       const p = profiles[name], radius = String(cfg.radius) + 'px';
       const preview = !!(el.dataset && el.dataset.wxSkinPreview === '1');
@@ -1307,11 +1313,25 @@ window.__ModuleLoader__.load({
         '--wx-art-pad-top': p ? (preview ? '1px' : p.padTop + 'px') : '10px',
         '--wx-art-pad-bottom': p ? (preview ? '1px' : p.padBottom + 'px') : '10px',
         '--wx-art-pad-x': p ? (preview ? '3px' : p.padX + 'px') : '14px',
-        '--wx-art-gap-top': p ? '4px' : '0px', '--wx-art-gap-bottom': p ? '6px' : '0px',
+        '--wx-art-gap-top': p ? '4px' : '0px',
+        // 2.8.1：人物悬在气泡外，下边距 = 外悬高度（charH × 2/3）+ 8px，别压住下一条消息；其它样式维持 6/0
+        '--wx-art-gap-bottom': p
+          ? (p.charH
+            ? (preview
+              ? sz(p.charH * (1 - (p.charOverlapRatio || 1 / 3)) + p.charGap)
+              : +(p.charH * (1 - (p.charOverlapRatio || 1 / 3)) + p.charGap).toFixed(4) + 'px')
+            : '6px')
+          : '0px',
         // 皮肤机制 + 旧九宫格变量（vector 时清成 none/0，阻断继承上一款位图）
         '--wx-skin-mode': p ? p.mode : 'none',
-        '--wx-skin-frame': p && p.mode === 'slice' ? 'var(--wx-skin-current-' + p.asset + ')' : 'none',
-        '--wx-skin-slice': p && p.mode === 'slice' ? p.slice.map((n) => n + '%').join(' ') : '0',
+        '--wx-skin-frame': p ? (p.mode === 'slice' ? 'var(--wx-skin-current-' + p.asset + ')' : (p.charH ? 'var(--wx-vec-' + p.asset + '-character,none)' : 'none')) : 'none',
+        '--wx-skin-slice': p
+          ? (p.mode === 'slice' ? p.slice.map((n) => n + '%').join(' ') + ' fill' : (p.charH ? '0 100% 100% 0' : '0'))
+          : '0',
+        /* 2.8.1 人物：只取右下角切片 → 整图不经切片、不拉伸；outset 向下伸出 2/3 高度（1/3 留在气泡内）
+           cat 仍需要 border-image-width:1 才能画出整图九宫格，所以这里给 slice 模式写 1。 */
+        '--wx-skin-image-width': p && p.charH ? '0 ' + sz(p.charW) + ' ' + sz(p.charH) + ' 0' : (p && p.mode === 'slice' ? '1' : '0'),
+        '--wx-skin-image-outset': p && p.charH ? '0 0 ' + sz(p.charH * (1 - (p.charOverlapRatio || 1 / 3))) + ' 0' : '0',
         '--wx-skin-base-edge': pictureEdge.join(' '),
         '--wx-skin-user-edge': edge.join(' '), '--wx-skin-ai-edge': [edge[0], edge[3], edge[2], edge[1]].join(' '),
         '--wx-skin-user-inset': edge.map((n) => 'calc(-1 * ' + n + ')').join(' '),
@@ -1441,14 +1461,17 @@ ${user},.wxprev-row--user .wxprev-bubble {
 ${pseudos} {
  content:var(--wx-skin-content,none);position:absolute;z-index:-1;box-sizing:border-box;pointer-events:none;
  inset:var(--wx-skin-inset,0px);border-radius:inherit;border-style:solid;border-color:transparent;border-width:var(--wx-skin-base-edge,1px);
- border-image-source:var(--wx-skin-frame,none);border-image-slice:var(--wx-skin-slice,0) fill;
- border-image-width:1;border-image-outset:0;border-image-repeat:stretch;
+ border-image-source:var(--wx-skin-frame,none);border-image-slice:var(--wx-skin-slice,0);
+ /* 2.8.1：width/outset 由变量控制 —— 三角色用右下单角 + 向下 outset 把人物挂到气泡外；
+    猫仍是整图九宫格（slice 自带 fill）；其它样式这两项为 0，不影响原有观感。 */
+ border-image-width:var(--wx-skin-image-width,1);border-image-outset:var(--wx-skin-image-outset,0);border-image-repeat:stretch;
  transform:var(--wx-skin-mirror,none);filter:var(--wx-skin-shadow,none);
  /* —— 分层矢量皮肤（2.8.0）：每层独立 url / 尺寸 / 位置 / 平铺 ——
-    层序（上→下）：角色原画 char → 四角装饰 corner×4 → 中间装饰 crest×2 → 上下花边 edge×2 → 左右细边×2 → 水波背景
+    背景层序（上→下，人物另由单角 border-image 绘制）：四角装饰 corner×4 → 中间装饰 crest×2 → 上下花边 edge×2 → 左右细边×2 → 水波背景
     + 最底层 background-color = 单色/微渐变底；各层尺寸固定，气泡变宽变高只让中间空白伸缩。 */
  background-image:
-   var(--wx-vec-char,none),
+   /* 2.8.1：人物不再画在气泡背景里（改由 border-image 单角悬到外沿），留 none 占位保持后续层索引不变 */
+   none,
    var(--wx-vec-corner,none),var(--wx-vec-corner,none),var(--wx-vec-corner,none),var(--wx-vec-corner,none),
    var(--wx-vec-crest,none),var(--wx-vec-crest,none),
    var(--wx-vec-edge,none),var(--wx-vec-edge,none),
@@ -1477,11 +1500,11 @@ ${pseudos} {
 .wxstyle-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;width:100%}
 .wxcfg .wxstyle-card {display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;gap:6px;min-width:0;min-height:128px;padding:14px 12px;border:1px solid var(--wx-modal-field-border,#d8d4e2);border-radius:14px;background:var(--wx-panel-bg,#fff);color:var(--wx-panel-fg,#343340);text-align:left;overflow:visible;cursor:pointer}
 .wxcfg .wxstyle-card[data-wx-bubble-style-option][aria-pressed='true'] {border-color:#8f83c3;box-shadow:0 0 0 2px rgba(143,131,195,.16);background:var(--wx-panel-bg,#fff);color:var(--wx-panel-fg,#343340)}
-.wxstyle-card-art {display:flex;align-items:center;justify-content:center;min-width:0;min-height:58px;pointer-events:none}
+.wxstyle-card-art {display:flex;align-items:center;justify-content:center;min-width:0;min-height:78px;pointer-events:none}
 .wxstyle-card .wxprev-bubble {display:flex;align-items:center;justify-content:center;font-size:12px;line-height:18px;width:76px;min-width:76px;max-width:76px;height:40px;margin:0}
 .wxstyle-card-title {font-size:13px;font-weight:600;padding:0 5px}
 .wxstyle-card-note {font-size:11px;line-height:17px;color:var(--wx-panel-sub,#75808d);padding:0 5px}
-@media(max-width:540px) {.wxstyle-grid {grid-template-columns:minmax(0,1fr)}.wxstyle-card-art {min-height:58px}}
+@media(max-width:540px) {.wxstyle-grid {grid-template-columns:minmax(0,1fr)}.wxstyle-card-art {min-height:78px}}
 
 /* 只改变轨道和拇指画面；保留宿主 role/aria-checked、尺寸、禁用、焦点及事件。 */
 html[data-wx-whale-switches='1'] button[role='switch'] {

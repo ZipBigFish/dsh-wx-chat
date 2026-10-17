@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-wx-chat",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "private": true,
   "type": "module",
   "description": "WeChat-style DSH chat with per-turn avatar history, preset schemes, crop UI, responsive vector bubble frames, fixed-proportion characters, blue ocean bubbles, day/night palettes, and optional whale-wave switches.",
