@@ -1,0 +1,19 @@
+# Dependencies and local development artifacts
+node_modules/
+coverage/
+.cache/
+logs/
+logs-*.txt
+*.log
+work/
+outputs/
+*.zip
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Operating system files
+.DS_Store
+Thumbs.db

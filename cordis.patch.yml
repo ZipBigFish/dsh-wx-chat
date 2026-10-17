@@ -1,0 +1,6 @@
+# dsh-wx-chat bundle patch: 把微信风聊天气泡插件插入 web 插件名单。
+# 安装: plugin_manager install_bundle <本目录绝对路径>
+# 关闭: 插件管理器禁用 dsh-wx-chat；卸载: remove_bundle。
+- insert:
+    - id: dsh-wx-chat
+      name: '@local/dsh-wx-chat'

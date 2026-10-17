@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "WeChat-Style Chat",
+    "description": "Renders the conversation as WeChat-style bubbles: user messages right with avatar, DeepSeek messages left. Adds per-turn tool/type avatars, a labeled roleplay-avatar entry with per-turn mode boundaries, avatar size and continuous corner-radius sliders, a size/appearance preview modal, a standalone centered crop modal, click-to-preview, solid/transparent avatar backgrounds, and GIF support. Presentation-only; keeps Markdown, code highlighting, streaming, copy, retry and tool calls."
+  }
+}
