@@ -1,6 +1,6 @@
 /**
  * dsh-wx-chat —— DeepSeek Harness 微信风聊天气泡（Client half）。
- * @version 2.8.1
+ * @version 2.8.2
  *
  * 设计原则（presentation-only）：
  * - 不替换任何 `conversation.chat.node` 渲染器，Markdown/代码高亮/流式/
@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
     // ── WX-M02 常量与默认配置 ─────────────────────────────────────────────
     // 两个 localStorage 键：CONFIG_KEY 存整份配置，ROLE_MODE_KEY 存「每会话角色模式边界」。
     const PACKAGE_NAME = '@local/dsh-wx-chat';
-    const VERSION = '2.8.1';
+    const VERSION = '2.8.2';
     const CONFIG_KEY = 'dsh-wx-chat/config-v1';
     const ROLE_MODE_KEY = 'dsh-wx-chat/roleplay-v1';
 
@@ -1274,6 +1274,7 @@ window.__ModuleLoader__.load({
         charReserve: 0,            // 人物悬在气泡外，正文不需要让位
         // 人物与气泡重叠 = 角色显示高度的 1/3（用户口径：三分之一在内、三分之二在外）
         charOverlapRatio: 1 / 3,
+        charLift: 6,               // 用户微调：保持横向位置，角色再上移 6px；预览同比缩放
         charGap: 8,                // 外悬人物与下一条消息之间至少留 8px
         minH: 72, min: 180,
       }, extra);
@@ -1318,8 +1319,8 @@ window.__ModuleLoader__.load({
         '--wx-art-gap-bottom': p
           ? (p.charH
             ? (preview
-              ? sz(p.charH * (1 - (p.charOverlapRatio || 1 / 3)) + p.charGap)
-              : +(p.charH * (1 - (p.charOverlapRatio || 1 / 3)) + p.charGap).toFixed(4) + 'px')
+              ? sz(p.charH * (1 - (p.charOverlapRatio || 1 / 3)) - p.charLift + p.charGap)
+              : +(p.charH * (1 - (p.charOverlapRatio || 1 / 3)) - p.charLift + p.charGap).toFixed(4) + 'px')
             : '6px')
           : '0px',
         // 皮肤机制 + 旧九宫格变量（vector 时清成 none/0，阻断继承上一款位图）
@@ -1331,7 +1332,16 @@ window.__ModuleLoader__.load({
         /* 2.8.1 人物：只取右下角切片 → 整图不经切片、不拉伸；outset 向下伸出 2/3 高度（1/3 留在气泡内）
            cat 仍需要 border-image-width:1 才能画出整图九宫格，所以这里给 slice 模式写 1。 */
         '--wx-skin-image-width': p && p.charH ? '0 ' + sz(p.charW) + ' ' + sz(p.charH) + ' 0' : (p && p.mode === 'slice' ? '1' : '0'),
-        '--wx-skin-image-outset': p && p.charH ? '0 0 ' + sz(p.charH * (1 - (p.charOverlapRatio || 1 / 3))) + ' 0' : '0',
+        /* 2.8.2 人物跨角：右侧与下侧各露出 2/3（宽 2/3 向右、高 2/3 向下），1/3 留在气泡内跨住拐角。
+           真实聊天里右侧 outset 用 min() 收口到「头像列 + 间隙 - 2px」，窄屏/小侧栏时不会把整页顶出视口；
+           预览（卡片 76×40）不受头像侧栏限制，直接按 0.35 等比 → 14.93px。 */
+        '--wx-skin-image-outset': p && p.charH
+          ? '0 '
+            + (preview
+              ? sz(p.charW * (1 - (p.charOverlapRatio || 1 / 3)))
+              : 'min(' + sz(p.charW * (1 - (p.charOverlapRatio || 1 / 3))) + ', calc(var(--wx-avatar-size, 36px) + var(--wx-avatar-gap, 12px) - 2px))')
+            + ' ' + sz(p.charH * (1 - (p.charOverlapRatio || 1 / 3)) - p.charLift) + ' 0'
+          : '0',
         '--wx-skin-base-edge': pictureEdge.join(' '),
         '--wx-skin-user-edge': edge.join(' '), '--wx-skin-ai-edge': [edge[0], edge[3], edge[2], edge[1]].join(' '),
         '--wx-skin-user-inset': edge.map((n) => 'calc(-1 * ' + n + ')').join(' '),
@@ -1344,7 +1354,13 @@ window.__ModuleLoader__.load({
         '--wx-skin-align': name === 'cat' || name === 'ocean' ? 'center' : 'left',
         '--wx-skin-code-bg': p ? 'var(--wx-skin-code-bg-theme)' : 'rgba(255,255,255,.78)',
         '--wx-skin-code-ink': p ? 'var(--wx-skin-code-ink-theme)' : '#28344b',
-        '--wx-skin-min-height': vec ? sz(p.minH) : '0px',
+        /* 2.8.2：人物跨角后上沿会到「头像列」高度，短句要保证人物上沿落在主头像下方并留约 8px。
+           只在真实消息里按头像尺寸抬高下限；选择卡沿用原预览值（0.35 缩放），长消息自然高度也不受影响。 */
+        '--wx-skin-min-height': vec
+          ? (p.charH && !preview
+            ? 'max(' + sz(p.minH) + ', calc(var(--wx-avatar-size, 36px) + ' + sz(p.charH / 3 + p.charLift) + ' + 6px))'
+            : sz(p.minH))
+          : '0px',
         '--wx-skin-shadow': p && p.mode === 'slice' ? 'drop-shadow(0 3px 4px rgba(40, 37, 56, .09))' : 'none',
         // —— 分层矢量皮肤的层变量（每层 url/size/position/repeat 各自独立）——
         '--wx-vec-side': vec && !p.full ? 'linear-gradient(color-mix(in srgb,currentColor 28%,transparent),color-mix(in srgb,currentColor 28%,transparent))' : 'none',
