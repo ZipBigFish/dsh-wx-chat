@@ -1,6 +1,6 @@
 /**
  * dsh-wx-chat —— DeepSeek Harness 微信风聊天气泡（Client half）。
- * @version 2.8.5
+ * @version 2.8.6
  *
  * 设计原则（presentation-only）：
  * - 不替换任何 `conversation.chat.node` 渲染器，Markdown/代码高亮/流式/
@@ -98,7 +98,7 @@ window.__ModuleLoader__.load({
     // ── WX-M02 常量与默认配置 ─────────────────────────────────────────────
     // 两个 localStorage 键：CONFIG_KEY 存整份配置，ROLE_MODE_KEY 存「每会话角色模式边界」。
     const PACKAGE_NAME = '@local/dsh-wx-chat';
-    const VERSION = '2.8.5';
+    const VERSION = '2.8.6';
     const CONFIG_KEY = 'dsh-wx-chat/config-v1';
     const ROLE_MODE_KEY = 'dsh-wx-chat/roleplay-v1';
 
@@ -2987,6 +2987,7 @@ html[data-wx-whale-switches='1'] :is(.wxcfg,.wxmodal) input[type='checkbox']:dis
           const letter = document.createElement('div');
           letter.className = 'wxpv-letter';
           letter.style.borderRadius = 'var(--wx-avatar-round, 50%)';
+          letter.style.cornerShape = 'round';
           letter.textContent = payload.letter || '我';
           body.appendChild(letter);
         }
@@ -3230,6 +3231,9 @@ html[data-wx-theme='light'],
   width: var(--wx-avatar-size);
   height: var(--wx-avatar-size);
   border-radius: var(--wx-avatar-round, 50%);
+  /* 头像形状只看 border-radius：显式声明 round，避免宿主/其它插件把默认 corner-shape
+     换成超级椭圆（squircle）时，50% 圆角被画成圆角方形。不支持的浏览器自动忽略。 */
+  corner-shape: round;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3467,10 +3471,12 @@ html[data-wx-theme='light'],
   height: min(48vmin, 420px);
   object-fit: contain;
   border-radius: var(--wx-avatar-round, 50%);
+  corner-shape: round;
   background: var(--wx-avatar-bg, #0d1730);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 .wxpv-letter {
+  corner-shape: round;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3924,6 +3930,7 @@ html[data-wx-theme='light'],
   width: var(--wx-prev-size, 36px);
   height: var(--wx-prev-size, 36px);
   border-radius: var(--wx-avatar-round, 50%);
+  corner-shape: round;
   background-color: var(--wx-avatar-bg, #4d6bfe);
   background-image: var(--wx-prev-img, none);
   background-size: cover;
@@ -4090,6 +4097,7 @@ html[data-wx-theme='light'],
   width: 36px;
   height: 36px;
   border-radius: var(--wx-avatar-round, 50%);
+  corner-shape: round;
   object-fit: cover;
   border: 1px solid var(--dsw-alias-border-l2, #ccd4e4);
   /* 透明背景用棋盘衬底，方便看出图片本身有没有底色 */
