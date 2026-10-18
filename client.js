@@ -1,6 +1,6 @@
 /**
  * dsh-wx-chat —— DeepSeek Harness 微信风聊天气泡（Client half）。
- * @version 2.8.2
+ * @version 2.8.3
  *
  * 设计原则（presentation-only）：
  * - 不替换任何 `conversation.chat.node` 渲染器，Markdown/代码高亮/流式/
@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
     // ── WX-M02 常量与默认配置 ─────────────────────────────────────────────
     // 两个 localStorage 键：CONFIG_KEY 存整份配置，ROLE_MODE_KEY 存「每会话角色模式边界」。
     const PACKAGE_NAME = '@local/dsh-wx-chat';
-    const VERSION = '2.8.2';
+    const VERSION = '2.8.3';
     const CONFIG_KEY = 'dsh-wx-chat/config-v1';
     const ROLE_MODE_KEY = 'dsh-wx-chat/roleplay-v1';
 
@@ -1274,7 +1274,7 @@ window.__ModuleLoader__.load({
         charReserve: 0,            // 人物悬在气泡外，正文不需要让位
         // 人物与气泡重叠 = 角色显示高度的 1/3（用户口径：三分之一在内、三分之二在外）
         charOverlapRatio: 1 / 3,
-        charLift: 6,               // 用户微调：保持横向位置，角色再上移 6px；预览同比缩放
+        charLift: 12,              // 用户微调：保持横向位置，角色再上移 12px；预览同比缩放
         charGap: 8,                // 外悬人物与下一条消息之间至少留 8px
         minH: 72, min: 180,
       }, extra);
