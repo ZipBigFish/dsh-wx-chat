@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DSH 自定义气泡设计 v1",
+  "description": "UTF-8 JSON ≤ 512 KiB，包括展开默认值后的大小。此 Schema 只验证结构；图片内容及装饰不压字规则以插件解析器为准。不要把 $schema 字段写入设计文件。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "dsh-wx-chat/bubble"
+    },
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "pattern": "\\S"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "paddingX": {
+          "type": "number",
+          "minimum": 6.0,
+          "maximum": 40.0,
+          "default": 14.0
+        },
+        "paddingTop": {
+          "type": "number",
+          "minimum": 6.0,
+          "maximum": 40.0,
+          "default": 12.0
+        },
+        "paddingBottom": {
+          "type": "number",
+          "minimum": 6.0,
+          "maximum": 40.0,
+          "default": 12.0
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 32.0,
+          "default": 12.0
+        },
+        "borderWidth": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 4.0,
+          "default": 1.0
+        },
+        "edgeWidth": {
+          "type": "number",
+          "minimum": 8.0,
+          "maximum": 160.0,
+          "default": 60.0
+        },
+        "edgeHeight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 32.0,
+          "default": 8.0
+        },
+        "crestWidth": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 96.0,
+          "default": 36.0
+        },
+        "crestHeight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 32.0,
+          "default": 16.0
+        },
+        "cornerSize": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 48.0,
+          "default": 18.0
+        },
+        "characterWidth": {
+          "type": "number",
+          "minimum": 16.0,
+          "maximum": 96.0,
+          "default": 48.0
+        },
+        "characterHeight": {
+          "type": "number",
+          "minimum": 16.0,
+          "maximum": 96.0,
+          "default": 48.0
+        }
+      },
+      "description": "CSS px。paddingTop 和 paddingBottom 需 ≥ 已有 edgeHeight、crestHeight、cornerSize/2 的最大值；由运行时跨字段验证。"
+    },
+    "light": {
+      "$ref": "#/$defs/theme"
+    },
+    "dark": {
+      "$ref": "#/$defs/theme"
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "name",
+    "light",
+    "dark"
+  ],
+  "$defs": {
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "text": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "border": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      },
+      "required": [
+        "background",
+        "text",
+        "border"
+      ]
+    },
+    "asset": {
+      "type": "string",
+      "maxLength": 524288,
+      "anyOf": [
+        {
+          "pattern": "^\\s*<svg[\\s>]"
+        },
+        {
+          "pattern": "^data:image/(png|webp|jpeg);base64,[A-Za-z0-9+/]+={0,2}$"
+        }
+      ],
+      "description": "完整 SVG 源码或真实图片的 base64 data URL；元素/属性白名单、内部引用、解码与 1–4096 尺寸由插件额外验证。"
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "user": {
+          "$ref": "#/$defs/colors"
+        },
+        "assistant": {
+          "$ref": "#/$defs/colors"
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "edge": {
+              "$ref": "#/$defs/asset"
+            },
+            "crest": {
+              "$ref": "#/$defs/asset"
+            },
+            "corner": {
+              "$ref": "#/$defs/asset"
+            },
+            "character": {
+              "$ref": "#/$defs/asset"
+            },
+            "background": {
+              "$ref": "#/$defs/asset"
+            }
+          }
+        }
+      },
+      "required": [
+        "user",
+        "assistant"
+      ]
+    }
+  }
+}

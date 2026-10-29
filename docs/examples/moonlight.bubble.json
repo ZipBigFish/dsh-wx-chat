@@ -1,0 +1,45 @@
+{
+  "format": "dsh-wx-chat/bubble",
+  "version": 1,
+  "name": "月光信笺",
+  "description": "紧凑留白、柔紫配色与波纹花边",
+  "layout": {
+    "paddingX": 14,
+    "paddingTop": 12,
+    "paddingBottom": 12,
+    "radius": 14,
+    "borderWidth": 1,
+    "edgeWidth": 60,
+    "edgeHeight": 8
+  },
+  "light": {
+    "user": {
+      "background": "#eef0ff",
+      "text": "#34345c",
+      "border": "#c9cbee"
+    },
+    "assistant": {
+      "background": "#fbf8ff",
+      "text": "#473b5d",
+      "border": "#ded3eb"
+    },
+    "assets": {
+      "edge": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 60 8\"><path d=\"M0 4 Q15 0 30 4 T60 4\" fill=\"none\" stroke=\"#b9a6d5\" stroke-width=\"1.5\"/></svg>"
+    }
+  },
+  "dark": {
+    "user": {
+      "background": "#29304f",
+      "text": "#edf0ff",
+      "border": "#596488"
+    },
+    "assistant": {
+      "background": "#30293f",
+      "text": "#f0e8fa",
+      "border": "#685677"
+    },
+    "assets": {
+      "edge": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 60 8\"><path d=\"M0 4 Q15 0 30 4 T60 4\" fill=\"none\" stroke=\"#8874a1\" stroke-width=\"1.5\"/></svg>"
+    }
+  }
+}

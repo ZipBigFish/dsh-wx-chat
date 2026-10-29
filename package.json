@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-wx-chat",
-  "version": "2.8.6",
+  "version": "2.9.3",
   "private": true,
   "type": "module",
-  "description": "WeChat-style DSH chat with per-turn avatar history, preset schemes, crop UI, responsive vector bubble frames, fixed-proportion characters, blue ocean bubbles, day/night palettes, and optional whale-wave switches.",
+  "description": "WeChat-style DSH chat with avatar schemes, per-turn identity history, fixed avatars for completed replies, importable custom bubble designs, compact message frames, and day/night palettes.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
